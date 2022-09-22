@@ -39,12 +39,6 @@ impl ASClient {
         self.client = c;
     }
 
-    // https://arseed.web3infra.dev/bundle/bundler
-    /*
-        {
-        "bundler": "uDA8ZblC-lyEFfsYXKewpwaX-kkNDDw8az3IW9bDL68"
-    }
-        */
     pub async fn get_bundler(&self) -> Result<BundlerRes, ASError> {
         let res = self
             .client
@@ -93,16 +87,6 @@ impl ASClient {
         */
     pub async fn submit_native_data(&self) {}
 
-    /*
-        bundle/fee/:size/:currency
-        {
-        "currency": "USDC",
-        "decimals": 6,
-        "finalFee": "4413"
-    }
-        */
-
-    // TODO validate currencies + size
     pub async fn get_bundle_fee(&self, size: &str, currency: &str) -> Result<FeeRes, ASError> {
         let res = self
             .client
@@ -147,10 +131,17 @@ impl ASClient {
 
     signer: The address corresponding to the signature private key, ecc or rsa address of bundle item.
         */
-    pub async fn get_bundler_orders(&self, signer: &str) -> Result<OrderRes, ASError> {
+    pub async fn get_bundler_orders(
+        &self,
+        signer: &str,
+        cursor: &str,
+    ) -> Result<OrderRes, ASError> {
         let res = self
             .client
-            .get(format!("{}bundle/orders/{}", self.url, signer))
+            .get(format!(
+                "{}bundle/orders/{}&cursorId={}",
+                self.url, signer, cursor
+            ))
             .send()
             .await?;
 
@@ -164,37 +155,6 @@ impl ASClient {
         }
     }
 
-    /*
-    URL: /bundle/tx/:itemId
-    Params:
-
-    itemId: bundle item Id
-
-    {
-        "signatureType": 3,
-        "signature": "DC469T6Fz3ByFCtEjnP9AdsLSDFqINxvbIqFw1qwk0ApHtpmytRWFHZeY2gBN9nXopzY7Sbi9u5U6UcpPrwPlxs",
-        "owner": "BCLR8qIeP8-kDAO6AifvSSzyCQJBwAtPYErCaX1LegK7GwXmyMvhzCmt1x6vLw4xixiOrI34ObhU2e1RGW5YNXo",
-        "target": "",
-        "anchor": "",
-        "tags": [
-            {
-              "name": "a",
-              "value": "aa"
-            },
-            {
-              "name": "b",
-              "value": "bb"
-            },
-            {
-              "name": "Content-Type",
-              "value": "image/png"
-            }
-          ],
-        "data": "",
-        "id": "IlYC5sG61mhTOlG2Ued5LWxN4nuhyZh3ror0MBbPKy4"
-    }
-
-    */
     pub async fn get_item_meta(&self, item_id: &str) -> Result<ItemMetaRes, ASError> {
         let res = self
             .client
@@ -212,16 +172,22 @@ impl ASClient {
         }
     }
 
-    /*
+    pub async fn get_items_by_ar_id(&self, ar_id: &str) -> Result<Vec<String>, ASError> {
+        let res = self
+            .client
+            .get(format!("{}bundle/itemIds/{}", self.url, ar_id))
+            .send()
+            .await?;
 
-        hod: GET
-    URL: /bundle/itemIds/:arId
-    [
-        "ikLaIRdrzTDD5-nL7C7LeWgZr_XEXbB5dB3C_hJZxXE",
-        "x0gzOsOtos4X5vzoJ1CW9wq2pMPB7q7v_zjnvPPNjp0"
-    ]
-        */
-    pub async fn get_items_by_ar_id(&self) {}
+        match res.status() {
+            StatusCode::OK => return Ok(res.json::<Vec<String>>().await?),
+            _ => {
+                return Err(ASError::APIError {
+                    e: res.json::<APIErrorRes>().await?.error,
+                })
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -238,8 +204,11 @@ mod test {
         //     .get_bundler_orders("0x4002ED1a1410aF1b4930cF6c479ae373dEbD6223")
         //     .await
         //     .unwrap();
+        // let res = c
+        //     .get_item_meta("IlYC5sG61mhTOlG2Ued5LWxN4nuhyZh3ror0MBbPKy4")
+        //     .await;
         let res = c
-            .get_item_meta("IlYC5sG61mhTOlG2Ued5LWxN4nuhyZh3ror0MBbPKy4")
+            .get_items_by_ar_id("-19XXEkalF_klxLLpknoTGAr6AnQMCgqzz-GjNn-oSE")
             .await;
 
         println!("{:?}", res);
