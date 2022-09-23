@@ -4,7 +4,10 @@ use crate::types::{
     APIErrorRes, ASError, BundlerRes, FeeRes, ItemMetaRes, ItemSubmissionRes, OrderRes,
     SubmitNativeRes,
 };
-use arloader::Arweave;
+use arloader::{
+    transaction::{FromUtf8Strs, Tag},
+    Arweave,
+};
 use reqwest::{Client, StatusCode};
 
 use url::Url;
@@ -56,6 +59,25 @@ impl ASClient {
         }
     }
 
+    pub async fn bundle_and_submit(
+        &self,
+        data: Vec<u8>,
+        tags: &HashMap<String, String>,
+        currency: &str,
+        api_key: &str,
+    ) -> Result<ItemSubmissionRes, ASError> {
+        let t: Vec<Tag<String>> = tags
+            .iter()
+            .map(|(k, v)| Tag::from_utf8_strs(k, v).unwrap())
+            .collect();
+
+        let data_item = self.arweave.create_data_item(data, t, true)?;
+        let signed = self.arweave.sign_data_item(data_item)?;
+
+        self.submit_item(signed.serialize()?, currency, api_key)
+            .await
+    }
+
     pub async fn submit_item(
         &self,
         data: Vec<u8>,
@@ -64,9 +86,9 @@ impl ASClient {
     ) -> Result<ItemSubmissionRes, ASError> {
         // TODO check currency
 
-        let mut url: String = "/bundle/tx".to_string();
+        let mut url: String = "bundle/tx".to_string();
         if currency.len() > 0 {
-            url = format!("{}{}{}", self.url, "/bundle/tx/", currency);
+            url = format!("{}{}{}", self.url, "bundle/tx/", currency);
         }
 
         let mut req = self
@@ -91,16 +113,6 @@ impl ASClient {
         }
     }
 
-    /*
-        /bundle/data
-        Header: X-API-KEY: 'your apiKey'
-    Body: --data-binary 'data'
-
-    {
-        itemId: "tSB2-PS3Qr-POmBgjIoi4wRYhhGq3UZ9uPO8dUf2LhM"
-    }
-
-        */
     pub async fn submit_native_data(
         &self,
         data: Vec<u8>,
@@ -110,7 +122,7 @@ impl ASClient {
     ) -> Result<SubmitNativeRes, ASError> {
         let mut req = self
             .client
-            .post(format!("{}{}", self.url, "/bundle/data"))
+            .post(format!("{}{}", self.url, "bundle/data"))
             .header("Content-Type", content_type)
             .query(&["Content-Type", content_type])
             .query(tags)
@@ -211,12 +223,14 @@ impl ASClient {
 
 #[cfg(test)]
 mod test {
+
+    use std::path::PathBuf;
+
     use super::*;
 
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_runs() {
-        // run()
         let c = ASClient::default();
 
         let res = c
@@ -229,7 +243,6 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_gets_bundlr() {
-        // run()
         let c = ASClient::default();
         let res = c.get_bundler().await.unwrap();
 
@@ -239,7 +252,6 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_gets_fee() {
-        // run()
         let c = ASClient::default();
         let res = c.get_bundle_fee("1000", "USDC").await.unwrap();
 
@@ -249,7 +261,6 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_fetches_orders() {
-        // run()
         let c = ASClient::default();
         let res = c
             .get_bundler_orders("Ii5wAMlLNz13n26nYY45mcZErwZLjICmYd46GZvn4ck", "")
@@ -262,10 +273,34 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_gets_item_meta() {
-        // run()
         let c = ASClient::default();
         let res = c
             .get_item_meta("_mbWucSl6nB6yagI7NaR8CO8UR7C9tvizO1V4i6Vck0")
+            .await
+            .unwrap();
+
+        println!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    #[ignore = "outbound_calls"]
+    async fn it_bundles_and_submits() {
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from(
+                "./tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
+            ),
+            Url::from_str("https://arweave.net").unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let c = ASClient::new(Url::from_str(DEFAULT_URL).unwrap(), Client::new(), arweave);
+
+        let mut tags = HashMap::new();
+        tags.insert("hello".to_string(), "there".to_string());
+
+        let res = c
+            .bundle_and_submit("test".as_bytes().to_vec(), &tags, "usdc", "")
             .await
             .unwrap();
 

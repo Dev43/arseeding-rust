@@ -88,6 +88,7 @@ pub enum ASError {
     ReqwestError(reqwest::Error),
     IOError(std::io::Error),
     APIError { e: String },
+    ArLoaderError(arloader::error::Error),
     // RingError(Unspecified),
 }
 
@@ -99,6 +100,7 @@ impl Display for ASError {
             ASError::APIError { e } => write!(f, "api: {}", e),
             ASError::ReqwestError(e) => write!(f, "reqwest: {}", e),
             ASError::IOError(e) => write!(f, "io: {}", e),
+            ASError::ArLoaderError( e ) => write!(f, "arloader: {}", e)
             // ASError::ParseIntError(e) => write!(f, "parse int error: {}", e),
             // ASError::RingError(e) => write!(f, "ring error: {}", e),
         }
@@ -114,6 +116,12 @@ impl From<reqwest::Error> for ASError {
 impl ASError {
     pub fn api_error(e: &str) -> ASError {
         ASError::APIError { e: e.to_string() }
+    }
+}
+
+impl From<arloader::error::Error> for ASError {
+    fn from(e: arloader::error::Error) -> Self {
+        ASError::ArLoaderError(e)
     }
 }
 
