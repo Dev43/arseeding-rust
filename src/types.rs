@@ -1,7 +1,7 @@
-use std::fmt::Display;
-
-use serde_derive::Deserialize;
+use chrono::{DateTime, TimeZone, Utc};
+use serde::{Deserialize, Deserializer};
 use serde_derive::Serialize;
+use std::fmt::Display;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct APIErrorRes {
@@ -42,15 +42,17 @@ pub struct FeeRes {
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderRes {
-    pub id: i64,
-    pub created_at: String,
-    pub updated_at: String,
+    pub id: u64,
+    #[serde(default, deserialize_with = "option_datefmt")]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(default, deserialize_with = "option_datefmt")]
+    pub updated_at: Option<DateTime<Utc>>,
     pub item_id: String,
     pub signer: String,
-    pub sign_type: i64,
+    pub sign_type: u8,
     pub size: i64,
     pub currency: String,
-    pub decimals: i64,
+    pub decimals: u8,
     pub fee: String,
     pub payment_expired_time: i64,
     pub expected_block: i64,
@@ -113,4 +115,27 @@ impl ASError {
     pub fn api_error(e: &str) -> ASError {
         ASError::APIError { e: e.to_string() }
     }
+}
+
+const FORMAT: &str = "%Y-%m-%dT%H:%M:%S%.3fZ";
+// 2022-06-24T03:29:54.174Z
+
+fn datefmt<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Utc.datetime_from_str(&s, FORMAT)
+        .map_err(serde::de::Error::custom)
+}
+
+fn option_datefmt<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Wrapper(#[serde(deserialize_with = "datefmt")] DateTime<Utc>);
+
+    let v = Option::deserialize(deserializer)?;
+    Ok(v.map(|Wrapper(a)| a))
 }
