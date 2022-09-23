@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
 use crate::types::{
     APIErrorRes, ASError, BundlerRes, FeeRes, ItemMetaRes, ItemSubmissionRes, OrderRes,
@@ -56,24 +56,40 @@ impl ASClient {
         }
     }
 
-    // /bundle/tx/:currency (either AR or USDC
-    // Headers: Content-Type:application/octet-stream
-    // Body: --data-binary 'bundle item data')
+    pub async fn submit_item(
+        &self,
+        data: Vec<u8>,
+        currency: &str,
+        api_key: &str,
+    ) -> Result<ItemSubmissionRes, ASError> {
+        // TODO check currency
 
-    /*
-        {
-        itemId:             "tSB2-PS3Qr-POmBgjIoi4wRYhhGq3UZ9uPO8dUf2LhM",
-        bundler:            "Fkj5J8CDLC9Jif4CzgtbiXJBnwXLSrp5AaIllleH_yY",
-        currency:           "AR",
-        decimals:           12,
-        fee:                "113123",
-        paymentExpiredTime: 122132421,
-        expectedBlock:      3144212,
+        let mut url: String = "/bundle/tx".to_string();
+        if currency.len() > 0 {
+            url = format!("{}{}{}", self.url, "/bundle/tx/", currency);
+        }
 
+        let mut req = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/octet-stream")
+            .body(data);
+
+        if api_key.len() > 0 {
+            req = req.header("X-API-KEY", api_key);
+        }
+
+        let res = req.send().await?;
+
+        match res.status() {
+            StatusCode::OK => return Ok(res.json::<ItemSubmissionRes>().await?),
+            _ => {
+                return Err(ASError::APIError {
+                    e: res.json::<APIErrorRes>().await?.error,
+                })
+            }
+        }
     }
-    if api key add     Header: X-API-KEY: 'your apiKey'
-        */
-    pub async fn submit_item(&self) {}
 
     /*
         /bundle/data
@@ -85,7 +101,36 @@ impl ASClient {
     }
 
         */
-    pub async fn submit_native_data(&self) {}
+    pub async fn submit_native_data(
+        &self,
+        data: Vec<u8>,
+        content_type: &str,
+        tags: &HashMap<String, String>,
+        api_key: &str,
+    ) -> Result<SubmitNativeRes, ASError> {
+        let mut req = self
+            .client
+            .post(format!("{}{}", self.url, "/bundle/data"))
+            .header("Content-Type", content_type)
+            .query(&["Content-Type", content_type])
+            .query(tags)
+            .body(data);
+
+        if api_key.len() > 0 {
+            req = req.header("X-API-KEY", api_key);
+        }
+
+        let res = req.send().await?;
+
+        match res.status() {
+            StatusCode::OK => return Ok(res.json::<SubmitNativeRes>().await?),
+            _ => {
+                return Err(ASError::APIError {
+                    e: res.json::<APIErrorRes>().await?.error,
+                })
+            }
+        }
+    }
 
     pub async fn get_bundle_fee(&self, size: &str, currency: &str) -> Result<FeeRes, ASError> {
         let res = self
@@ -136,14 +181,15 @@ impl ASClient {
         signer: &str,
         cursor: &str,
     ) -> Result<OrderRes, ASError> {
-        let res = self
+        let mut req = self
             .client
-            .get(format!(
-                "{}bundle/orders/{}&cursorId={}",
-                self.url, signer, cursor
-            ))
-            .send()
-            .await?;
+            .get(format!("{}bundle/orders/{}", self.url, signer));
+
+        if cursor.len() > 0 {
+            req = req.query(&["cursor", cursor]);
+        }
+
+        let res = req.send().await?;
 
         match res.status() {
             StatusCode::OK => return Ok(res.json::<OrderRes>().await?),
