@@ -2,7 +2,7 @@ use std::{collections::HashMap, str::FromStr};
 
 use crate::types::{
     APIErrorRes, ASError, BundlerRes, FeeRes, ItemMetaRes, ItemSubmissionRes, OrderRes,
-    SubmitNativeRes, Tag,
+    SubmitNativeRes,
 };
 use arloader::Arweave;
 use reqwest::{Client, StatusCode};
@@ -149,38 +149,11 @@ impl ASClient {
         }
     }
 
-    /*
-        /bundle/orders/:signer
-        [
-        {
-            "id": 13,
-            "createdAt": "2022-07-11T04:07:12.261Z",
-            "updatedAt": "2022-07-11T05:07:44.369Z",
-            "itemId": "n6Xv8LwdpsQgpaTQgaXQfUORW-KxYePDnj-1ka9dHxM",
-            "signer": "0x4002ED1a1410aF1b4930cF6c479ae373dEbD6223",
-            "signType": 3,
-            "size": 7802,
-            "currency": "USDT",
-            "decimals": 6,
-            "fee": "817",
-            "paymentExpiredTime": 1657516032,
-            "expectedBlock": 972166,
-            "paymentStatus": "expired",
-            "paymentId": "",
-            "onChainStatus": "failed"
-        },
-        ...
-    ]Query Params:
-    cursorId: (option) Return the id of the last record in the list, used for paging.
-    Params:
-
-    signer: The address corresponding to the signature private key, ecc or rsa address of bundle item.
-        */
     pub async fn get_bundler_orders(
         &self,
         signer: &str,
         cursor: &str,
-    ) -> Result<OrderRes, ASError> {
+    ) -> Result<Vec<OrderRes>, ASError> {
         let mut req = self
             .client
             .get(format!("{}bundle/orders/{}", self.url, signer));
@@ -192,7 +165,7 @@ impl ASClient {
         let res = req.send().await?;
 
         match res.status() {
-            StatusCode::OK => return Ok(res.json::<OrderRes>().await?),
+            StatusCode::OK => return Ok(res.json::<Vec<OrderRes>>().await?),
             _ => {
                 return Err(ASError::APIError {
                     e: res.json::<APIErrorRes>().await?.error,
@@ -241,22 +214,61 @@ mod test {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "outbound_calls"]
     async fn it_runs() {
         // run()
         let c = ASClient::default();
-        // let res = c.get_bundler().await.unwrap();
-        // let res = c.get_bundle_fee("1000", "usdc").await.unwrap();
-        // let res = c
-        //     .get_bundler_orders("0x4002ED1a1410aF1b4930cF6c479ae373dEbD6223")
-        //     .await
-        //     .unwrap();
-        // let res = c
-        //     .get_item_meta("IlYC5sG61mhTOlG2Ued5LWxN4nuhyZh3ror0MBbPKy4")
-        //     .await;
+
         let res = c
             .get_items_by_ar_id("-19XXEkalF_klxLLpknoTGAr6AnQMCgqzz-GjNn-oSE")
             .await;
 
-        println!("{:?}", res);
+        println!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    #[ignore = "outbound_calls"]
+    async fn it_gets_bundlr() {
+        // run()
+        let c = ASClient::default();
+        let res = c.get_bundler().await.unwrap();
+
+        println!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    #[ignore = "outbound_calls"]
+    async fn it_gets_fee() {
+        // run()
+        let c = ASClient::default();
+        let res = c.get_bundle_fee("1000", "USDC").await.unwrap();
+
+        println!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    #[ignore = "outbound_calls"]
+    async fn it_fetches_orders() {
+        // run()
+        let c = ASClient::default();
+        let res = c
+            .get_bundler_orders("Ii5wAMlLNz13n26nYY45mcZErwZLjICmYd46GZvn4ck", "")
+            .await
+            .unwrap();
+
+        println!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    #[ignore = "outbound_calls"]
+    async fn it_gets_item_meta() {
+        // run()
+        let c = ASClient::default();
+        let res = c
+            .get_item_meta("_mbWucSl6nB6yagI7NaR8CO8UR7C9tvizO1V4i6Vck0")
+            .await
+            .unwrap();
+
+        println!("{:#?}", res);
     }
 }
