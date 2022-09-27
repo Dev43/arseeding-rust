@@ -1,6 +1,8 @@
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
+use crate::types::ASError;
+
 
 pub const TX_VERSION_V1: &str = "v1";
 
@@ -20,6 +22,18 @@ pub const ETH_CHAIN_ID: &str = "1";
 
 pub const CHAIN_TYPE: &str = "arweave,ethereum";
 pub const CHAIN_ID: &str = "0,1";
+
+pub enum SignerType {
+    ECDSA,
+    RSA
+}
+
+pub trait Signer {
+    fn sign(&self, msg:&[u8]) -> Result<String, ASError>;
+    fn owner(&self) -> Result<String, ASError>;
+    fn wallet_address(&self) -> Result<String, ASError>;
+    fn signer_type(&self) -> SignerType;
+}
 
 
 

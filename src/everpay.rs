@@ -8,37 +8,60 @@ use reqwest::StatusCode;
 
 use url::Url;
 
-use crate::everpay_types::StatusRes;
-use crate::everpay_types::Transaction;
-use crate::everpay_types::TX_VERSION_V1;
-use crate::{
-    everpay_types::Balances,
-    types::{APIErrorRes, ASError},
-};
-pub struct EverpayClient {
+use crate::everpay_types::Signer;
+use crate::everpay_types::{Balances, SignerType, StatusRes, Transaction, TX_VERSION_V1};
+use crate::types::{APIErrorRes, ASError};
+pub struct EverpayClient<'a> {
     client: Client,
-    arweave: Arweave,
     url: Url,
+    signer: &'a dyn Signer,
+}
+
+pub struct ArweaveSigner {
+    arweave: Arweave,
+}
+
+impl ArweaveSigner {
+    fn new(arweave: Arweave) -> impl Signer {
+        Self { arweave }
+    }
+}
+
+impl Signer for ArweaveSigner {
+    fn sign(&self, msg: &[u8]) -> Result<String, ASError> {
+        // first hash the message (using Eth prefix message)
+        let eth_hash = ethers::utils::hash_message(msg);
+
+        let sig = self.arweave.crypto.sign(eth_hash.as_bytes())?;
+
+        Ok(format!(
+            "{},{}",
+            Base64(sig).to_string(),
+            self.arweave.crypto.keypair_modulus()?.to_string()
+        ))
+    }
+    fn owner(&self) -> Result<String, ASError> {
+        let r = self.arweave.crypto.keypair_modulus()?;
+        Ok(r.to_string())
+    }
+    fn signer_type(&self) -> SignerType {
+        SignerType::RSA
+    }
+    fn wallet_address(&self) -> Result<String, ASError> {
+        let addr = self.arweave.crypto.wallet_address()?;
+
+        Ok(addr.to_string())
+    }
 }
 
 const DEFAULT_URL: &str = "https://api.everpay.io";
 
-impl Default for EverpayClient {
-    fn default() -> Self {
+impl<'a> EverpayClient<'a> {
+    pub fn new(client: reqwest::Client, url: Url, signer: &'a dyn Signer) -> EverpayClient {
         Self {
-            client: reqwest::Client::new(),
-            arweave: Arweave::default(),
-            url: Url::from_str(DEFAULT_URL).unwrap(),
-        }
-    }
-}
-
-impl EverpayClient {
-    pub fn new(arweave: Arweave, client: reqwest::Client, url: Url) -> EverpayClient {
-        Self {
-            arweave,
             client,
             url,
+            signer,
         }
     }
 
@@ -78,6 +101,10 @@ impl EverpayClient {
         }
     }
 
+    pub fn sign(&self, msg: &str) -> Result<String, ASError> {
+        self.signer.sign(msg.as_bytes())
+    }
+
     pub async fn sign_and_send_tx(
         &self,
         token_symbol: &str,
@@ -94,7 +121,7 @@ impl EverpayClient {
         let mut tx = Transaction {
             token_symbol: token_symbol.to_string(),
             action: action.to_string(),
-            from: self.arweave.crypto.wallet_address().unwrap().to_string(),
+            from: self.signer.wallet_address()?,
             to: receiver.to_string(),
             amount: amount.to_string(),
             fee: fee.to_string(),
@@ -108,16 +135,9 @@ impl EverpayClient {
             sig: "".to_string(),
         };
 
-        // first hash the message (using Eth prefix message)
-        let eth_hash = ethers::utils::hash_message(tx.sig_msg());
+        tx.sig = self.sign(&tx.sig_msg())?;
 
-        let sig = self.arweave.crypto.sign(eth_hash.as_bytes()).unwrap();
-
-        tx.sig = format!(
-            "{},{}",
-            Base64(sig).to_string(),
-            self.arweave.crypto.keypair_modulus().unwrap().to_string()
-        );
+        println!("{}", tx.sig);
 
         self.submit_tx(&tx).await
     }
@@ -141,7 +161,12 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_gets_balance() {
-        let c = EverpayClient::default();
+        let signer = ArweaveSigner::new(Arweave::default());
+        let c = EverpayClient::new(
+            reqwest::Client::new(),
+            Url::from_str(DEFAULT_URL).unwrap(),
+            &signer,
+        );
 
         let res = c
             .balances("2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0")
@@ -162,10 +187,12 @@ mod test {
         .await
         .unwrap();
 
+        let signer = ArweaveSigner::new(arweave);
+
         let c = EverpayClient::new(
-            arweave,
             reqwest::Client::new(),
             Url::from_str(DEFAULT_URL).unwrap(),
+            &signer,
         );
 
         let res = c
