@@ -14,4 +14,9 @@ serde_derive = "1.0.130"
 serde_json = { version = "1.0.68", features = ["preserve_order"] }
 arloader = "0.1.63"
 chrono = "0.4.22"
-ethers = "0.15.0"
+ethers = "0.13.0"
+walletconnect = { git = "https://github.com/Dev43/walletconnect-rs", branch = "feat/ethberlin", features = [
+    "web3",
+    "qr",
+] }
+async-trait = "0.1.57"

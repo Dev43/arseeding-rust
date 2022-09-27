@@ -263,7 +263,7 @@ mod test {
     async fn it_fetches_orders() {
         let c = ASClient::default();
         let res = c
-            .get_bundler_orders("Ii5wAMlLNz13n26nYY45mcZErwZLjICmYd46GZvn4ck", "")
+            .get_bundler_orders("7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg", "")
             .await
             .unwrap();
 
@@ -275,7 +275,7 @@ mod test {
     async fn it_gets_item_meta() {
         let c = ASClient::default();
         let res = c
-            .get_item_meta("_mbWucSl6nB6yagI7NaR8CO8UR7C9tvizO1V4i6Vck0")
+            .get_item_meta("BewjUEppPQ9pljVrjMxF7A2Kkz5ZJt_Q7tXRkQDm2VQ")
             .await
             .unwrap();
 

@@ -1,10 +1,10 @@
-use std::str::FromStr;
-
 use arloader::transaction::Base64;
 use arloader::Arweave;
+use async_trait::async_trait;
 use chrono::Utc;
 use reqwest::Client;
 use reqwest::StatusCode;
+use walletconnect::{self, qr, Metadata};
 
 use url::Url;
 
@@ -16,45 +16,6 @@ pub struct EverpayClient<'a> {
     url: Url,
     signer: &'a dyn Signer,
 }
-
-pub struct ArweaveSigner {
-    arweave: Arweave,
-}
-
-impl ArweaveSigner {
-    fn new(arweave: Arweave) -> impl Signer {
-        Self { arweave }
-    }
-}
-
-impl Signer for ArweaveSigner {
-    fn sign(&self, msg: &[u8]) -> Result<String, ASError> {
-        // first hash the message (using Eth prefix message)
-        let eth_hash = ethers::utils::hash_message(msg);
-
-        let sig = self.arweave.crypto.sign(eth_hash.as_bytes())?;
-
-        Ok(format!(
-            "{},{}",
-            Base64(sig).to_string(),
-            self.arweave.crypto.keypair_modulus()?.to_string()
-        ))
-    }
-    fn owner(&self) -> Result<String, ASError> {
-        let r = self.arweave.crypto.keypair_modulus()?;
-        Ok(r.to_string())
-    }
-    fn signer_type(&self) -> SignerType {
-        SignerType::RSA
-    }
-    fn wallet_address(&self) -> Result<String, ASError> {
-        let addr = self.arweave.crypto.wallet_address()?;
-
-        Ok(addr.to_string())
-    }
-}
-
-const DEFAULT_URL: &str = "https://api.everpay.io";
 
 impl<'a> EverpayClient<'a> {
     pub fn new(client: reqwest::Client, url: Url, signer: &'a dyn Signer) -> EverpayClient {
@@ -101,8 +62,8 @@ impl<'a> EverpayClient<'a> {
         }
     }
 
-    pub fn sign(&self, msg: &str) -> Result<String, ASError> {
-        self.signer.sign(msg.as_bytes())
+    pub async fn sign(&self, msg: &str) -> Result<String, ASError> {
+        self.signer.sign(msg).await
     }
 
     pub async fn sign_and_send_tx(
@@ -135,7 +96,7 @@ impl<'a> EverpayClient<'a> {
             sig: "".to_string(),
         };
 
-        tx.sig = self.sign(&tx.sig_msg())?;
+        tx.sig = self.sign(&tx.sig_msg()).await?;
 
         println!("{}", tx.sig);
 
@@ -147,13 +108,90 @@ impl<'a> EverpayClient<'a> {
     }
 }
 
+pub struct ArweaveSigner {
+    arweave: Arweave,
+}
+
+impl ArweaveSigner {
+    fn new(arweave: Arweave) -> impl Signer {
+        Self { arweave }
+    }
+}
+
+#[async_trait]
+impl Signer for ArweaveSigner {
+    async fn sign(&self, msg: &str) -> Result<String, ASError> {
+        // first hash the message (using Eth prefix message)
+        let eth_hash = ethers::utils::hash_message(msg);
+
+        let sig = self.arweave.crypto.sign(eth_hash.as_bytes())?;
+
+        Ok(format!(
+            "{},{}",
+            Base64(sig).to_string(),
+            self.arweave.crypto.keypair_modulus()?.to_string()
+        ))
+    }
+    fn owner(&self) -> Result<String, ASError> {
+        let r = self.arweave.crypto.keypair_modulus()?;
+        Ok(r.to_string())
+    }
+    fn signer_type(&self) -> SignerType {
+        SignerType::RSA
+    }
+    fn wallet_address(&self) -> Result<String, ASError> {
+        let addr = self.arweave.crypto.wallet_address()?;
+
+        Ok(addr.to_string())
+    }
+}
+
+pub struct EthSigner {
+    client: walletconnect::Client,
+    account: String,
+}
+
+impl EthSigner {
+    async fn new(client: walletconnect::Client) -> impl Signer {
+        let (accounts, _) = client.ensure_session(qr::print).await.unwrap();
+        Self {
+            client,
+            account: format!("{:?}", accounts[0]),
+        }
+    }
+}
+
+#[async_trait]
+impl Signer for EthSigner {
+    async fn sign(&self, msg: &str) -> Result<String, ASError> {
+        // first hash the message (using Eth prefix message)
+
+        let sig = self
+            .client
+            .personal_sign(&[msg, &self.account])
+            .await
+            .unwrap();
+
+        Ok(format!("{}", sig,))
+    }
+    fn owner(&self) -> Result<String, ASError> {
+        Ok("".to_string())
+    }
+    fn signer_type(&self) -> SignerType {
+        SignerType::ECDSA
+    }
+    fn wallet_address(&self) -> Result<String, ASError> {
+        Ok(self.account.clone())
+    }
+}
+
 #[cfg(test)]
 mod test {
 
-    use std::path::PathBuf;
+    use std::{path::PathBuf, str::FromStr};
 
     use crate::everpay_types::{
-        ACCOUNT_TYPE_AR, ARWEAVE_CHAIN_ID, CHAIN_ID, CHAIN_TYPE, TX_ACTION_TRANSFER,
+        ACCOUNT_TYPE_AR, ARWEAVE_CHAIN_ID, CHAIN_ID, CHAIN_TYPE, DEFAULT_URL, TX_ACTION_TRANSFER,
     };
 
     use super::*;
@@ -177,7 +215,51 @@ mod test {
 
     #[tokio::test]
     #[ignore = "outbound_calls"]
-    async fn it_signs_and_sends_tx() {
+    async fn it_signs_and_sends_tx_eth() {
+        let c = walletconnect::Client::new(
+            "arseeding",
+            Metadata {
+                description: "Arseeding".into(),
+                url: "https://github.com/nlordell/walletconnect-rs"
+                    .parse()
+                    .unwrap(),
+                icons: vec!["https://avatars0.githubusercontent.com/u/4210206"
+                    .parse()
+                    .unwrap()],
+                name: "Arseeding".into(),
+            },
+        )
+        .unwrap();
+
+        let signer = EthSigner::new(c).await;
+
+        let c = EverpayClient::new(
+            reqwest::Client::new(),
+            Url::from_str(DEFAULT_URL).unwrap(),
+            &signer,
+        );
+
+        let res = c
+            .sign_and_send_tx(
+                "AR",
+                TX_ACTION_TRANSFER,
+                0,
+                "0x6451eB7f668de69Fb4C943Db72bCF2A73DeeC6B1",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543",
+                CHAIN_TYPE,
+                CHAIN_ID,
+                "2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0",
+                1,
+                r#"{"hello":"world","this":"is everpay"}"#,
+            )
+            .await;
+
+        println!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    #[ignore = "outbound_calls"]
+    async fn it_signs_and_sends_tx_arweave() {
         let arweave = Arweave::from_keypair_path(
             PathBuf::from(
                 "./tests/fixtures/test-----arweave-keyfile-2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0.json",
