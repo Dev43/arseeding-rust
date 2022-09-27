@@ -108,30 +108,18 @@ impl EverpayClient {
             sig: "".to_string(),
         };
 
-        println!("{}", tx.sig_msg());
         // first hash the message (using Eth prefix message)
-
         let eth_hash = ethers::utils::hash_message(tx.sig_msg());
 
-        // now hash normally (the lib used in arloader does not pre hash the message)
-        let msg = self
-            .arweave
-            .crypto
-            .hash_sha256(eth_hash.as_bytes())
-            .unwrap();
+        let sig = self.arweave.crypto.sign(eth_hash.as_bytes()).unwrap();
 
-        // now we sign (the lib used)
-        // let sig = self.arweave.crypto.sign(eth_hash.as_bytes()).unwrap();
-        let sig = self.arweave.crypto.sign(&msg).unwrap();
-
-        tx.sig = Base64(sig).to_string();
-
-        println!("{:?}", tx);
+        tx.sig = format!(
+            "{},{}",
+            Base64(sig).to_string(),
+            self.arweave.crypto.keypair_modulus().unwrap().to_string()
+        );
 
         self.submit_tx(&tx).await
-        // Ok(StatusRes {
-        //     status: "ok".to_string(),
-        // })
     }
 
     fn get_nonce(&self) -> i64 {
