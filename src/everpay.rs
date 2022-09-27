@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use arloader::transaction::Base64;
 use arloader::Arweave;
 use async_trait::async_trait;
@@ -11,6 +13,7 @@ use url::Url;
 use crate::everpay_types::Signer;
 use crate::everpay_types::{Balances, SignerType, StatusRes, Transaction, TX_VERSION_V1};
 use crate::types::{APIErrorRes, ASError};
+
 pub struct EverpayClient<'a> {
     client: Client,
     url: Url,
@@ -98,8 +101,6 @@ impl<'a> EverpayClient<'a> {
 
         tx.sig = self.sign(&tx.sig_msg()).await?;
 
-        println!("{}", tx.sig);
-
         self.submit_tx(&tx).await
     }
 
@@ -113,7 +114,7 @@ pub struct ArweaveSigner {
 }
 
 impl ArweaveSigner {
-    fn new(arweave: Arweave) -> impl Signer {
+    pub fn new(arweave: Arweave) -> impl Signer {
         Self { arweave }
     }
 }
@@ -152,7 +153,7 @@ pub struct EthSigner {
 }
 
 impl EthSigner {
-    async fn new(client: walletconnect::Client) -> impl Signer {
+    pub async fn new(client: walletconnect::Client) -> impl Signer {
         let (accounts, _) = client.ensure_session(qr::print).await.unwrap();
         Self {
             client,

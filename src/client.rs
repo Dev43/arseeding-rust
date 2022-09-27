@@ -1,8 +1,13 @@
 use std::{collections::HashMap, str::FromStr};
 
-use crate::types::{
-    APIErrorRes, ASError, BundlerRes, FeeRes, ItemMetaRes, ItemSubmissionRes, OrderRes,
-    SubmitNativeRes,
+use crate::{
+    everpay::EverpayClient,
+    everpay_types::{PayTxData, StatusRes
+        , CHAIN_ID, CHAIN_TYPE, TX_ACTION_TRANSFER},
+    types::{
+        APIErrorRes, ASError, BundlerRes, FeeRes, ItemMetaRes, ItemSubmissionRes, OrderRes,
+        SubmitNativeRes,
+    },
 };
 use arloader::{
     transaction::{FromUtf8Strs, Tag},
@@ -11,30 +16,22 @@ use arloader::{
 use reqwest::{Client, StatusCode};
 
 use url::Url;
-pub struct ASClient {
+pub struct ASClient<'a> {
     client: Client,
     arweave: Arweave,
     url: Url,
+    everpay: EverpayClient<'a>,
 }
 
 const DEFAULT_URL: &str = "https://arseed.web3infra.dev";
 
-impl Default for ASClient {
-    fn default() -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            arweave: Arweave::default(),
-            url: Url::from_str(DEFAULT_URL).unwrap(),
-        }
-    }
-}
-
-impl ASClient {
-    pub fn new(url: Url, client: Client, arweave: Arweave) -> Self {
+impl<'a> ASClient<'a> {
+    pub fn new(url: Url, client: Client, arweave: Arweave, everpay: EverpayClient<'a>) -> Self {
         ASClient {
             url,
             client,
             arweave,
+            everpay,
         }
     }
 
@@ -76,6 +73,49 @@ impl ASClient {
 
         self.submit_item(signed.serialize()?, currency, api_key)
             .await
+    }
+
+    pub async fn send_and_pay(
+        &self,
+        data: Vec<u8>,
+        tags: &HashMap<String, String>,
+        currency: &str,
+        api_key: &str,
+    ) -> Result<StatusRes, ASError> {
+        let order = self
+            .bundle_and_submit(data, tags, currency, api_key)
+            .await?;
+
+
+        let order_id = order.item_id;
+
+        // pay for tx using everpay
+        let fee = order.fee;
+        let fee_int: u64 = fee.parse().unwrap();
+        let bundler = order.bundler;
+        let currency = order.currency;
+
+        let data = serde_json::to_string(
+        &PayTxData {
+            app_name: String::from("arseeding"),
+            action: String::from("payment"),
+            item_ids: vec![order_id],
+        }).unwrap();
+
+        println!("{}", data);
+
+        self.everpay.sign_and_send_tx(                
+     "AR",
+       TX_ACTION_TRANSFER,
+       0,
+       "0x6451eB7f668de69Fb4C943Db72bCF2A73DeeC6B1",
+       "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543",
+       CHAIN_TYPE,
+       CHAIN_ID,
+       &bundler,
+       fee_int,
+       &data
+    ).await
     }
 
     pub async fn submit_item(
@@ -226,13 +266,31 @@ mod test {
 
     use std::path::PathBuf;
 
+    use crate::{everpay::ArweaveSigner, everpay_types::{Signer, self}};
+
     use super::*;
+
+    async fn init_default<'a>(signer: &'a impl Signer, arweave: Arweave) -> ASClient {
+
+        let everpay = EverpayClient::new(
+            reqwest::Client::new(),
+            Url::from_str(DEFAULT_URL).unwrap(),
+            signer,
+        );
+        ASClient::new(
+            Url::from_str(DEFAULT_URL).unwrap(),
+            reqwest::Client::new(),
+            arweave,
+            everpay,
+        )
+    }
 
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_runs() {
-        let c = ASClient::default();
-
+        let signer = ArweaveSigner::new(Arweave::default());
+        let ar = Arweave::default();
+        let c = init_default(&signer, ar).await;
         let res = c
             .get_items_by_ar_id("-19XXEkalF_klxLLpknoTGAr6AnQMCgqzz-GjNn-oSE")
             .await;
@@ -243,7 +301,10 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_gets_bundlr() {
-        let c = ASClient::default();
+        let signer = ArweaveSigner::new(Arweave::default());
+        let ar = Arweave::default();
+
+        let c = init_default(&signer, ar).await;
         let res = c.get_bundler().await.unwrap();
 
         println!("{:#?}", res);
@@ -252,7 +313,9 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_gets_fee() {
-        let c = ASClient::default();
+        let ar = Arweave::default();
+        let signer = ArweaveSigner::new(Arweave::default());
+        let c = init_default(&signer, ar).await;
         let res = c.get_bundle_fee("1000", "USDC").await.unwrap();
 
         println!("{:#?}", res);
@@ -261,9 +324,11 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_fetches_orders() {
-        let c = ASClient::default();
+        let ar = Arweave::default();
+        let signer = ArweaveSigner::new(Arweave::default());
+        let c = init_default(&signer, ar).await;
         let res = c
-            .get_bundler_orders("7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg", "")
+            .get_bundler_orders("2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0", "")
             .await
             .unwrap();
 
@@ -273,7 +338,9 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_gets_item_meta() {
-        let c = ASClient::default();
+        let signer = ArweaveSigner::new(Arweave::default());
+        let ar = Arweave::default();
+        let c = init_default(&signer, ar).await;
         let res = c
             .get_item_meta("BewjUEppPQ9pljVrjMxF7A2Kkz5ZJt_Q7tXRkQDm2VQ")
             .await
@@ -294,13 +361,82 @@ mod test {
         .await
         .unwrap();
 
-        let c = ASClient::new(Url::from_str(DEFAULT_URL).unwrap(), Client::new(), arweave);
+        let signer = ArweaveSigner::new(arweave);
+
+        let everpay = EverpayClient::new(
+            reqwest::Client::new(),
+            Url::from_str(DEFAULT_URL).unwrap(),
+            &signer,
+        );
+
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from(
+                "./tests/fixtures/arweave-key-7eV1qae4qVNqsNChg3Scdi-DpOLJPCogct4ixoq1WNg.json",
+            ),
+            Url::from_str("https://arweave.net").unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let c = ASClient::new(
+            Url::from_str(DEFAULT_URL).unwrap(),
+            Client::new(),
+            arweave,
+            everpay,
+        );
 
         let mut tags = HashMap::new();
         tags.insert("hello".to_string(), "there".to_string());
 
         let res = c
             .bundle_and_submit("test".as_bytes().to_vec(), &tags, "usdc", "")
+            .await
+            .unwrap();
+
+        println!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    #[ignore = "outbound_calls"]
+    async fn it_bundles_submits_and_pays() {
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from(
+                "./tests/fixtures/test-----arweave-keyfile-2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0.json",
+            ),
+            Url::from_str("https://arweave.net").unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let signer = ArweaveSigner::new(arweave);
+
+        let everpay = EverpayClient::new(
+            reqwest::Client::new(),
+            Url::from_str(everpay_types::DEFAULT_URL).unwrap(),
+            &signer,
+        );
+
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from(
+                "./tests/fixtures/test-----arweave-keyfile-2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0.json",
+            ),
+            Url::from_str("https://arweave.net").unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let c = ASClient::new(
+            Url::from_str(DEFAULT_URL).unwrap(),
+            Client::new(),
+            arweave,
+            everpay,
+        );
+
+        let mut tags = HashMap::new();
+        tags.insert("hello".to_string(), "there".to_string());
+
+        let res = c
+            .send_and_pay("test".as_bytes().to_vec(), &tags, "ar", "")
             .await
             .unwrap();
 

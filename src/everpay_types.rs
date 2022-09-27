@@ -107,3 +107,12 @@ pub struct TransactionRes {
 pub struct StatusRes {
     pub status: String,
 }
+
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PayTxData {
+    pub app_name: String,
+    pub action: String, 
+    pub item_ids: Vec<String>
+}
