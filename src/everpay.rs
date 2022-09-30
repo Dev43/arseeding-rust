@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use arloader::transaction::Base64;
 use arloader::Arweave;
@@ -14,16 +15,16 @@ use crate::everpay_types::TokenList;
 use crate::everpay_types::TX_ACTION_TRANSFER;
 use crate::everpay_types::{Balances, SignerType, StatusRes, Transaction, TX_VERSION_V1};
 
-pub struct Everpay<'a> {
+pub struct Everpay {
     client: EverpayClient,
-    signer: &'a dyn Signer,
+    signer: Arc<dyn Signer>,
     tokens: HashMap<String, TokenList>,
     symbol_to_tag: HashMap<String, String>,
     fee_recipient: String,
 }
 
-impl<'a> Everpay<'a> {
-    pub async fn new(client: EverpayClient, signer: &'a dyn Signer) -> Result<Everpay, ASError> {
+impl Everpay {
+    pub async fn new(client: EverpayClient, signer: Arc<dyn Signer>) -> Result<Everpay, ASError> {
         let mut c = Self {
             client,
             signer,
@@ -274,8 +275,8 @@ mod test {
         .await
         .unwrap();
 
-        let signer = ArweaveSigner::new(arweave);
-        let c = Everpay::new(EverpayClient::default(), &signer)
+        let signer = Arc::new(ArweaveSigner::new(arweave));
+        let c = Everpay::new(EverpayClient::default(), signer)
             .await
             .unwrap();
 
@@ -301,9 +302,9 @@ mod test {
         )
         .unwrap();
 
-        let signer = EthSigner::new(c).await;
+        let signer = Arc::new(EthSigner::new(c).await);
 
-        let c = Everpay::new(EverpayClient::default(), &signer)
+        let c = Everpay::new(EverpayClient::default(), signer)
             .await
             .unwrap();
 
@@ -337,9 +338,9 @@ mod test {
         .await
         .unwrap();
 
-        let signer = ArweaveSigner::new(arweave);
+        let signer = Arc::new(ArweaveSigner::new(arweave));
 
-        let c = Everpay::new(EverpayClient::default(), &signer)
+        let c = Everpay::new(EverpayClient::default(), signer)
             .await
             .unwrap();
 
@@ -373,9 +374,9 @@ mod test {
         .await
         .unwrap();
 
-        let signer = ArweaveSigner::new(arweave);
+        let signer = Arc::new(ArweaveSigner::new(arweave));
 
-        let c = Everpay::new(EverpayClient::default(), &signer)
+        let c = Everpay::new(EverpayClient::default(), signer)
             .await
             .unwrap();
 

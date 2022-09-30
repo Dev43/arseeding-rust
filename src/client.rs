@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     arseeding_types::{
@@ -15,17 +15,17 @@ use arloader::{
 use reqwest::{Client, StatusCode};
 
 use url::Url;
-pub struct ASClient<'a> {
+pub struct ASClient {
     client: Client,
     arweave: Arweave,
     url: Url,
-    everpay: Everpay<'a>,
+    everpay: Everpay,
 }
 
 const DEFAULT_ARSEEDING_URL: &str = "https://arseed.web3infra.dev";
 
-impl<'a> ASClient<'a> {
-    pub fn new(url: Url, client: Client, arweave: Arweave, everpay: Everpay<'a>) -> Self {
+impl ASClient {
+    pub fn new(url: Url, client: Client, arweave: Arweave, everpay: Everpay) -> Self {
         ASClient {
             url,
             client,
@@ -259,7 +259,7 @@ mod test {
 
     use super::*;
 
-    async fn init_default<'a>(signer: &'a impl Signer, arweave: Arweave) -> ASClient {
+    async fn init_default<'a>(signer: Arc<dyn Signer>, arweave: Arweave) -> ASClient {
         let everpay = Everpay::new(EverpayClient::default(), signer)
             .await
             .unwrap();
@@ -274,9 +274,9 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_runs() {
-        let signer = ArweaveSigner::new(Arweave::default());
+        let signer = Arc::new(ArweaveSigner::new(Arweave::default()));
         let ar = Arweave::default();
-        let c = init_default(&signer, ar).await;
+        let c = init_default(signer, ar).await;
         let res = c
             .get_items_by_ar_id("-19XXEkalF_klxLLpknoTGAr6AnQMCgqzz-GjNn-oSE")
             .await;
@@ -287,10 +287,11 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_gets_bundlr() {
-        let signer = ArweaveSigner::new(Arweave::default());
+        let signer = Arc::new(ArweaveSigner::new(Arweave::default()));
+
         let ar = Arweave::default();
 
-        let c = init_default(&signer, ar).await;
+        let c = init_default(signer, ar).await;
         let res = c.get_bundler().await.unwrap();
 
         println!("{:#?}", res);
@@ -300,8 +301,8 @@ mod test {
     #[ignore = "outbound_calls"]
     async fn it_gets_fee() {
         let ar = Arweave::default();
-        let signer = ArweaveSigner::new(Arweave::default());
-        let c = init_default(&signer, ar).await;
+        let signer = Arc::new(ArweaveSigner::new(Arweave::default()));
+        let c = init_default(signer, ar).await;
         let res = c.get_bundle_fee("1000", "USDC").await.unwrap();
 
         println!("{:#?}", res);
@@ -311,8 +312,8 @@ mod test {
     #[ignore = "outbound_calls"]
     async fn it_fetches_orders() {
         let ar = Arweave::default();
-        let signer = ArweaveSigner::new(Arweave::default());
-        let c = init_default(&signer, ar).await;
+        let signer = Arc::new(ArweaveSigner::new(Arweave::default()));
+        let c = init_default(signer, ar).await;
         let res = c
             .get_bundler_orders("2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0", "")
             .await
@@ -324,9 +325,9 @@ mod test {
     #[tokio::test]
     #[ignore = "outbound_calls"]
     async fn it_gets_item_meta() {
-        let signer = ArweaveSigner::new(Arweave::default());
+        let signer = Arc::new(ArweaveSigner::new(Arweave::default()));
         let ar = Arweave::default();
-        let c = init_default(&signer, ar).await;
+        let c = init_default(signer, ar).await;
         let res = c
             .get_item_meta("BewjUEppPQ9pljVrjMxF7A2Kkz5ZJt_Q7tXRkQDm2VQ")
             .await
@@ -347,9 +348,9 @@ mod test {
         .await
         .unwrap();
 
-        let signer = ArweaveSigner::new(arweave);
+        let signer = Arc::new(ArweaveSigner::new(arweave));
 
-        let everpay = Everpay::new(EverpayClient::default(), &signer)
+        let everpay = Everpay::new(EverpayClient::default(), signer)
             .await
             .unwrap();
 
@@ -392,9 +393,9 @@ mod test {
         .await
         .unwrap();
 
-        let signer = ArweaveSigner::new(arweave);
+        let signer = Arc::new(ArweaveSigner::new(arweave));
 
-        let everpay = Everpay::new(EverpayClient::default(), &signer)
+        let everpay = Everpay::new(EverpayClient::default(), signer)
             .await
             .unwrap();
 
