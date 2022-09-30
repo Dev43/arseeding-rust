@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use crate::{
     arseeding_types::{
@@ -256,6 +256,7 @@ mod test {
     use crate::{everpay::ArweaveSigner, everpay_client::EverpayClient, everpay_types::Signer};
     use std::path::PathBuf;
     use std::str::FromStr;
+    use std::sync::Arc;
 
     use super::*;
 

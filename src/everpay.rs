@@ -17,14 +17,17 @@ use crate::everpay_types::{Balances, SignerType, StatusRes, Transaction, TX_VERS
 
 pub struct Everpay {
     client: EverpayClient,
-    signer: Arc<dyn Signer>,
+    signer: Arc<dyn Signer + Send + Sync>,
     tokens: HashMap<String, TokenList>,
     symbol_to_tag: HashMap<String, String>,
     fee_recipient: String,
 }
 
 impl Everpay {
-    pub async fn new(client: EverpayClient, signer: Arc<dyn Signer>) -> Result<Everpay, ASError> {
+    pub async fn new(
+        client: EverpayClient,
+        signer: Arc<dyn Signer + Send + Sync>,
+    ) -> Result<Everpay, ASError> {
         let mut c = Self {
             client,
             signer,
