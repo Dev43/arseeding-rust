@@ -11,6 +11,7 @@ use crate::everpay_client::EverpayClient;
 use crate::everpay_types::Signer;
 use crate::everpay_types::TokenInfo;
 use crate::everpay_types::TokenList;
+use crate::everpay_types::TX_ACTION_TRANSFER;
 use crate::everpay_types::{Balances, SignerType, StatusRes, Transaction, TX_VERSION_V1};
 
 pub struct Everpay<'a> {
@@ -18,6 +19,7 @@ pub struct Everpay<'a> {
     signer: &'a dyn Signer,
     tokens: HashMap<String, TokenList>,
     symbol_to_tag: HashMap<String, String>,
+    fee_recipient: String,
 }
 
 impl<'a> Everpay<'a> {
@@ -27,6 +29,7 @@ impl<'a> Everpay<'a> {
             signer,
             tokens: HashMap::new(),
             symbol_to_tag: HashMap::new(),
+            fee_recipient: String::from(""),
         };
 
         c.update_info().await?;
@@ -49,6 +52,7 @@ impl<'a> Everpay<'a> {
         }
         self.tokens = tokens;
         self.symbol_to_tag = sym_to_tags;
+        self.fee_recipient = token_info.fee_recipient;
 
         Ok(())
     }
@@ -77,7 +81,7 @@ impl<'a> Everpay<'a> {
         self.signer.sign(msg).await
     }
 
-    pub async fn sign_and_send_tx(
+    pub async fn send_action_raw(
         &self,
         token_symbol: &str,
         action: &str,
@@ -112,8 +116,58 @@ impl<'a> Everpay<'a> {
         self.submit_tx(&tx).await
     }
 
-    fn get_nonce(&self) -> i64 {
-        Utc::now().timestamp_nanos() / 1000000
+    pub async fn transfer(
+        &self,
+        symbol: &str,
+        receiver: &str,
+        amount: u64,
+        data: &str,
+    ) -> Result<StatusRes, ASError> {
+        let tag = self.symbol_to_tag[&symbol.to_lowercase()].clone();
+
+        self.send_transfer(&tag, receiver, amount, data).await
+    }
+
+    async fn send_transfer(
+        &self,
+        token_tag: &str,
+        receiver: &str,
+        amount: u64,
+        data: &str,
+    ) -> Result<StatusRes, ASError> {
+        let token_info = self.tokens.get(token_tag);
+
+        if token_info.is_none() {
+            return Err(ASError::TokenError {
+                arg: token_tag.to_string(),
+            });
+        }
+        let token_info = token_info.unwrap();
+
+        let mut tx = Transaction {
+            token_symbol: token_info.symbol.clone(),
+            action: TX_ACTION_TRANSFER.to_string(),
+            from: self.signer.wallet_address()?,
+            to: receiver.to_string(),
+            amount: amount.to_string(),
+            fee: token_info.transfer_fee.clone(),
+            fee_recipient: self.fee_recipient.clone(),
+            nonce: self.get_nonce(),
+            token_id: token_info.id.clone(),
+            chain_type: token_info.chain_type.clone(),
+            chain_id: token_info.chain_id.clone(),
+            data: data.to_string(),
+            version: TX_VERSION_V1.to_string(),
+            sig: String::from(""),
+        };
+
+        tx.sig = self.sign(&tx.sig_msg()).await?;
+
+        self.submit_tx(&tx).await
+    }
+
+    fn get_nonce(&self) -> String {
+        (Utc::now().timestamp_nanos() / 1000000).to_string()
     }
 }
 
@@ -199,11 +253,14 @@ mod test {
 
     use std::{path::PathBuf, str::FromStr};
 
-    use crate::everpay_types::{CHAIN_ID, CHAIN_TYPE, TX_ACTION_TRANSFER};
+    use crate::everpay_types::TX_ACTION_TRANSFER;
     use url::Url;
     use walletconnect::Metadata;
 
     use super::*;
+
+    pub const CHAIN_TYPE: &str = "arweave,ethereum";
+    pub const CHAIN_ID: &str = "0,1";
 
     #[tokio::test]
     #[ignore = "outbound_calls"]
@@ -228,7 +285,7 @@ mod test {
 
     #[tokio::test]
     #[ignore = "outbound_calls"]
-    async fn it_signs_and_sends_tx_eth() {
+    async fn it_signs_and_sends_tx_eth_raw() {
         let c = walletconnect::Client::new(
             "arseeding",
             Metadata {
@@ -251,7 +308,7 @@ mod test {
             .unwrap();
 
         let res = c
-            .sign_and_send_tx(
+            .send_action_raw(
                 "AR",
                 TX_ACTION_TRANSFER,
                 0,
@@ -260,6 +317,42 @@ mod test {
                 CHAIN_TYPE,
                 CHAIN_ID,
                 "2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0",
+                1,
+                r#"{"hello":"world","this":"is everpay"}"#,
+            )
+            .await;
+
+        println!("{:#?}", res);
+    }
+
+    #[tokio::test]
+    #[ignore = "outbound_calls"]
+    async fn it_signs_and_sends_tx_arweave_raw() {
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from(
+                "./tests/fixtures/test-----arweave-keyfile-2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0.json",
+            ),
+            Url::from_str("https://arweave.net").unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let signer = ArweaveSigner::new(arweave);
+
+        let c = Everpay::new(EverpayClient::default(), &signer)
+            .await
+            .unwrap();
+
+        let res = c
+            .send_action_raw(
+                "AR",
+                TX_ACTION_TRANSFER,
+                0,
+                "0x6451eB7f668de69Fb4C943Db72bCF2A73DeeC6B1",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543",
+                CHAIN_TYPE,
+                CHAIN_ID,
+                "rQ3VdxFnCOYjquTF88UANCax8-viPtrmu5TA2dktQlY",
                 1,
                 r#"{"hello":"world","this":"is everpay"}"#,
             )
@@ -287,14 +380,8 @@ mod test {
             .unwrap();
 
         let res = c
-            .sign_and_send_tx(
+            .transfer(
                 "AR",
-                TX_ACTION_TRANSFER,
-                0,
-                "0x6451eB7f668de69Fb4C943Db72bCF2A73DeeC6B1",
-                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543",
-                CHAIN_TYPE,
-                CHAIN_ID,
                 "rQ3VdxFnCOYjquTF88UANCax8-viPtrmu5TA2dktQlY",
                 1,
                 r#"{"hello":"world","this":"is everpay"}"#,

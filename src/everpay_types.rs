@@ -11,18 +11,7 @@ pub const TX_ACTION_TRANSFER: &str = "transfer";
 pub const TX_ACTION_MINT: &str     = "mint";
 pub const TX_ACTION_BURN: &str     = "burn";
 
-pub const AR_ADDRESS: &str   = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-pub const EVM_ADDRESS: &str  = "0x0000000000000000000000000000000000000000";
-pub const ETH_ADDRESS: &str  = "0x0000000000000000000000000000000000000000";
 
-pub const ACCOUNT_TYPE_AR: &str= "arweave";
-pub const ARWEAVE_CHAIN_ID: &str = "0";
-
-pub const ACCOUNT_TYPE_EVM: &str= "ethereum";
-pub const ETH_CHAIN_ID: &str = "1";
-
-pub const CHAIN_TYPE: &str = "arweave,ethereum";
-pub const CHAIN_ID: &str = "0,1";
 
 pub const DEFAULT_EVERPAY_URL: &str = "https://api.everpay.io";
 

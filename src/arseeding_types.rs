@@ -84,6 +84,7 @@ pub struct Tag {
 #[derive(Debug)]
 pub enum ASError {
     ArgumentError { arg: String },
+    TokenError { arg: String },
     URLError { url: String },
     ReqwestError(reqwest::Error),
     IOError(std::io::Error),
@@ -96,6 +97,7 @@ impl Display for ASError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ASError::ArgumentError { arg } => write!(f, "argument not valid: {}", arg),
+            ASError::TokenError { arg } => write!(f, "token not valid: {}", arg),
             ASError::URLError { url } => write!(f, "invalid url: {}", url),
             ASError::APIError { e } => write!(f, "api: {}", e),
             ASError::ReqwestError(e) => write!(f, "reqwest: {}", e),

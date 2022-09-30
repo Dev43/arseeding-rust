@@ -1,13 +1,12 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use crate::{
-    everpay::Everpay,
-    everpay_types::{PayTxData, StatusRes
-        , CHAIN_ID, CHAIN_TYPE, TX_ACTION_TRANSFER},
     arseeding_types::{
         APIErrorRes, ASError, BundlerRes, FeeRes, ItemMetaRes, ItemSubmissionRes, OrderRes,
         SubmitNativeRes,
     },
+    everpay::Everpay,
+    everpay_types::{PayTxData, StatusRes},
 };
 use arloader::{
     transaction::{FromUtf8Strs, Tag},
@@ -77,15 +76,14 @@ impl<'a> ASClient<'a> {
 
     pub async fn send_and_pay(
         &self,
-        data: Vec<u8>,
-        tags: &HashMap<String, String>,
         currency: &str,
+        tags: &HashMap<String, String>,
+        data: Vec<u8>,
         api_key: &str,
     ) -> Result<StatusRes, ASError> {
         let order = self
             .bundle_and_submit(data, tags, currency, api_key)
             .await?;
-
 
         let order_id = order.item_id;
 
@@ -95,27 +93,16 @@ impl<'a> ASClient<'a> {
         let bundler = order.bundler;
         let currency = order.currency;
 
-        let data = serde_json::to_string(
-        &PayTxData {
+        let data = serde_json::to_string(&PayTxData {
             app_name: String::from("arseeding"),
             action: String::from("payment"),
             item_ids: vec![order_id],
-        }).unwrap();
+        })
+        .unwrap();
 
-        println!("{}", data);
-
-        self.everpay.sign_and_send_tx(                
-     "AR",
-       TX_ACTION_TRANSFER,
-       0,
-       "0x6451eB7f668de69Fb4C943Db72bCF2A73DeeC6B1",
-       "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,0x4fadc7a98f2dc96510e42dd1a74141eeae0c1543",
-       CHAIN_TYPE,
-       CHAIN_ID,
-       &bundler,
-       fee_int,
-       &data
-    ).await
+        self.everpay
+            .transfer(&currency, &bundler, fee_int, &data)
+            .await
     }
 
     pub async fn submit_item(
@@ -264,18 +251,16 @@ impl<'a> ASClient<'a> {
 #[cfg(test)]
 mod test {
 
+    use crate::{everpay::ArweaveSigner, everpay_client::EverpayClient, everpay_types::Signer};
     use std::path::PathBuf;
     use std::str::FromStr;
-    use crate::{everpay::ArweaveSigner, everpay_types::{Signer}, everpay_client::EverpayClient};
 
     use super::*;
 
     async fn init_default<'a>(signer: &'a impl Signer, arweave: Arweave) -> ASClient {
-
-        let everpay = Everpay::new(
-           EverpayClient::default(),
-            signer,
-        ).await.unwrap();
+        let everpay = Everpay::new(EverpayClient::default(), signer)
+            .await
+            .unwrap();
         ASClient::new(
             Url::from_str(DEFAULT_ARSEEDING_URL).unwrap(),
             reqwest::Client::new(),
@@ -362,11 +347,9 @@ mod test {
 
         let signer = ArweaveSigner::new(arweave);
 
-
-        let everpay = Everpay::new(
-           EverpayClient::default(),
-            &signer,
-        ).await.unwrap();
+        let everpay = Everpay::new(EverpayClient::default(), &signer)
+            .await
+            .unwrap();
 
         let arweave = Arweave::from_keypair_path(
             PathBuf::from(
@@ -409,10 +392,9 @@ mod test {
 
         let signer = ArweaveSigner::new(arweave);
 
-        let everpay = Everpay::new(
-            EverpayClient::default(),
-             &signer,
-         ).await.unwrap();
+        let everpay = Everpay::new(EverpayClient::default(), &signer)
+            .await
+            .unwrap();
 
         let arweave = Arweave::from_keypair_path(
             PathBuf::from(
@@ -434,7 +416,7 @@ mod test {
         tags.insert("hello".to_string(), "there".to_string());
 
         let res = c
-            .send_and_pay("test".as_bytes().to_vec(), &tags, "ar", "")
+            .send_and_pay("ar", &tags, "test1".as_bytes().to_vec(), "")
             .await
             .unwrap();
 
