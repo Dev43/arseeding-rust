@@ -1,7 +1,8 @@
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
+use std::collections::HashMap;
 
-use crate::types::ASError;
+use crate::arseeding_types::ASError;
 use async_trait::async_trait;
 
 pub const TX_VERSION_V1: &str = "v1";
@@ -23,7 +24,7 @@ pub const ETH_CHAIN_ID: &str = "1";
 pub const CHAIN_TYPE: &str = "arweave,ethereum";
 pub const CHAIN_ID: &str = "0,1";
 
-pub const DEFAULT_URL: &str = "https://api.everpay.io";
+pub const DEFAULT_EVERPAY_URL: &str = "https://api.everpay.io";
 
 
 pub enum SignerType {
@@ -116,3 +117,50 @@ pub struct PayTxData {
     pub action: String, 
     pub item_ids: Vec<String>
 }
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenInfo {
+    pub is_synced: bool,
+    pub is_closed: bool,
+    pub balance_root_hash: String,
+    pub root_hash: String,
+    pub ever_root_hash: String,
+    pub owner: String,
+    #[serde(rename = "ethChainID")]
+    pub eth_chain_id: String,
+    pub fee_recipient: String,
+    pub eth_locker: String,
+    pub ar_locker: String,
+    pub lockers: HashMap<String, String>,
+    pub token_list: Vec<TokenList>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenList {
+    pub tag: String,
+    pub id: String,
+    pub symbol: String,
+    pub decimals: i64,
+    pub total_supply: String,
+    pub chain_type: String,
+    #[serde(rename = "chainID")]
+    pub chain_id: String,
+    pub burn_fees: HashMap<String, String>,
+    pub transfer_fee: String,
+    pub bundle_fee: String,
+    pub holder_num: i64,
+    pub cross_chain_info_list: HashMap<String, CrossChainInfoListDetails>,
+}
+
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrossChainInfoListDetails {
+    pub target_chain_id: String,
+    pub target_chain_type: String,
+    pub target_decimals: i64,
+    pub target_token_id: String,
+}
+

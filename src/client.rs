@@ -1,10 +1,10 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap};
 
 use crate::{
-    everpay::EverpayClient,
+    everpay::Everpay,
     everpay_types::{PayTxData, StatusRes
         , CHAIN_ID, CHAIN_TYPE, TX_ACTION_TRANSFER},
-    types::{
+    arseeding_types::{
         APIErrorRes, ASError, BundlerRes, FeeRes, ItemMetaRes, ItemSubmissionRes, OrderRes,
         SubmitNativeRes,
     },
@@ -20,13 +20,13 @@ pub struct ASClient<'a> {
     client: Client,
     arweave: Arweave,
     url: Url,
-    everpay: EverpayClient<'a>,
+    everpay: Everpay<'a>,
 }
 
-const DEFAULT_URL: &str = "https://arseed.web3infra.dev";
+const DEFAULT_ARSEEDING_URL: &str = "https://arseed.web3infra.dev";
 
 impl<'a> ASClient<'a> {
-    pub fn new(url: Url, client: Client, arweave: Arweave, everpay: EverpayClient<'a>) -> Self {
+    pub fn new(url: Url, client: Client, arweave: Arweave, everpay: Everpay<'a>) -> Self {
         ASClient {
             url,
             client,
@@ -265,20 +265,19 @@ impl<'a> ASClient<'a> {
 mod test {
 
     use std::path::PathBuf;
-
-    use crate::{everpay::ArweaveSigner, everpay_types::{Signer, self}};
+    use std::str::FromStr;
+    use crate::{everpay::ArweaveSigner, everpay_types::{Signer}, everpay_client::EverpayClient};
 
     use super::*;
 
     async fn init_default<'a>(signer: &'a impl Signer, arweave: Arweave) -> ASClient {
 
-        let everpay = EverpayClient::new(
-            reqwest::Client::new(),
-            Url::from_str(DEFAULT_URL).unwrap(),
+        let everpay = Everpay::new(
+           EverpayClient::default(),
             signer,
-        );
+        ).await.unwrap();
         ASClient::new(
-            Url::from_str(DEFAULT_URL).unwrap(),
+            Url::from_str(DEFAULT_ARSEEDING_URL).unwrap(),
             reqwest::Client::new(),
             arweave,
             everpay,
@@ -363,11 +362,11 @@ mod test {
 
         let signer = ArweaveSigner::new(arweave);
 
-        let everpay = EverpayClient::new(
-            reqwest::Client::new(),
-            Url::from_str(DEFAULT_URL).unwrap(),
+
+        let everpay = Everpay::new(
+           EverpayClient::default(),
             &signer,
-        );
+        ).await.unwrap();
 
         let arweave = Arweave::from_keypair_path(
             PathBuf::from(
@@ -379,7 +378,7 @@ mod test {
         .unwrap();
 
         let c = ASClient::new(
-            Url::from_str(DEFAULT_URL).unwrap(),
+            Url::from_str(DEFAULT_ARSEEDING_URL).unwrap(),
             Client::new(),
             arweave,
             everpay,
@@ -410,11 +409,10 @@ mod test {
 
         let signer = ArweaveSigner::new(arweave);
 
-        let everpay = EverpayClient::new(
-            reqwest::Client::new(),
-            Url::from_str(everpay_types::DEFAULT_URL).unwrap(),
-            &signer,
-        );
+        let everpay = Everpay::new(
+            EverpayClient::default(),
+             &signer,
+         ).await.unwrap();
 
         let arweave = Arweave::from_keypair_path(
             PathBuf::from(
@@ -426,7 +424,7 @@ mod test {
         .unwrap();
 
         let c = ASClient::new(
-            Url::from_str(DEFAULT_URL).unwrap(),
+            Url::from_str(DEFAULT_ARSEEDING_URL).unwrap(),
             Client::new(),
             arweave,
             everpay,

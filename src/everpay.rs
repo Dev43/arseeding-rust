@@ -1,68 +1,76 @@
-use std::str::FromStr;
+use std::collections::HashMap;
 
 use arloader::transaction::Base64;
 use arloader::Arweave;
 use async_trait::async_trait;
 use chrono::Utc;
-use reqwest::Client;
-use reqwest::StatusCode;
-use walletconnect::{self, qr, Metadata};
+use walletconnect::{self, qr};
 
-use url::Url;
-
+use crate::arseeding_types::ASError;
+use crate::everpay_client::EverpayClient;
 use crate::everpay_types::Signer;
+use crate::everpay_types::TokenInfo;
+use crate::everpay_types::TokenList;
 use crate::everpay_types::{Balances, SignerType, StatusRes, Transaction, TX_VERSION_V1};
-use crate::types::{APIErrorRes, ASError};
 
-pub struct EverpayClient<'a> {
-    client: Client,
-    url: Url,
+pub struct Everpay<'a> {
+    client: EverpayClient,
     signer: &'a dyn Signer,
+    tokens: HashMap<String, TokenList>,
+    symbol_to_tag: HashMap<String, String>,
 }
 
-impl<'a> EverpayClient<'a> {
-    pub fn new(client: reqwest::Client, url: Url, signer: &'a dyn Signer) -> EverpayClient {
-        Self {
+impl<'a> Everpay<'a> {
+    pub async fn new(client: EverpayClient, signer: &'a dyn Signer) -> Result<Everpay, ASError> {
+        let mut c = Self {
             client,
-            url,
             signer,
+            tokens: HashMap::new(),
+            symbol_to_tag: HashMap::new(),
+        };
+
+        c.update_info().await?;
+
+        Ok(c)
+    }
+
+    async fn update_info(&mut self) -> Result<(), ASError> {
+        let token_info = self.client.info().await?;
+
+        let mut tokens = HashMap::new();
+        let mut sym_to_tags = HashMap::new();
+
+        for t in token_info.token_list {
+            let tag = t.tag.clone();
+            let tag_2 = t.tag.clone();
+            let symbol = t.symbol.clone().to_lowercase();
+            tokens.insert(tag, t);
+            sym_to_tags.insert(symbol, tag_2);
         }
+        self.tokens = tokens;
+        self.symbol_to_tag = sym_to_tags;
+
+        Ok(())
+    }
+
+    pub async fn info(&self) -> Result<TokenInfo, ASError> {
+        self.client.info().await
+    }
+
+    pub fn symbol_to_tag(&self) -> HashMap<String, String> {
+        self.symbol_to_tag.clone()
+    }
+
+    pub fn tokens(&self) -> HashMap<String, TokenList> {
+        self.tokens.clone()
     }
 
     pub async fn balances(&self, account_id: &str) -> Result<Balances, ASError> {
-        let res = self
-            .client
-            .get(format!("{}balances/{}", self.url, account_id))
-            .send()
-            .await?;
-
-        match res.status() {
-            StatusCode::OK => return Ok(res.json::<Balances>().await?),
-            _ => {
-                return Err(ASError::APIError {
-                    e: res.json::<APIErrorRes>().await?.error,
-                })
-            }
-        }
+        self.client.balances(account_id).await
     }
 
     pub async fn submit_tx(&self, tx: &Transaction) -> Result<StatusRes, ASError> {
-        let res = self
-            .client
-            .post(format!("{}{}", self.url, "tx"))
-            .header("Content-Type", "application/json")
-            .json(tx)
-            .send()
-            .await?;
-
-        match res.status() {
-            StatusCode::OK => return Ok(res.json::<StatusRes>().await?),
-            _ => {
-                return Err(ASError::APIError {
-                    e: res.json::<APIErrorRes>().await?.error,
-                })
-            }
-        }
+        self.client.submit_tx(tx).await
     }
 
     pub async fn sign(&self, msg: &str) -> Result<String, ASError> {
@@ -191,27 +199,31 @@ mod test {
 
     use std::{path::PathBuf, str::FromStr};
 
-    use crate::everpay_types::{
-        ACCOUNT_TYPE_AR, ARWEAVE_CHAIN_ID, CHAIN_ID, CHAIN_TYPE, DEFAULT_URL, TX_ACTION_TRANSFER,
-    };
+    use crate::everpay_types::{CHAIN_ID, CHAIN_TYPE, TX_ACTION_TRANSFER};
+    use url::Url;
+    use walletconnect::Metadata;
 
     use super::*;
 
     #[tokio::test]
     #[ignore = "outbound_calls"]
-    async fn it_gets_balance() {
-        let signer = ArweaveSigner::new(Arweave::default());
-        let c = EverpayClient::new(
-            reqwest::Client::new(),
-            Url::from_str(DEFAULT_URL).unwrap(),
-            &signer,
-        );
+    async fn it_gets_info() {
+        let arweave = Arweave::from_keypair_path(
+            PathBuf::from(
+                "./tests/fixtures/test-----arweave-keyfile-2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0.json",
+            ),
+            Url::from_str("https://arweave.net").unwrap(),
+        )
+        .await
+        .unwrap();
 
-        let res = c
-            .balances("2NbYHgsuI8uQcuErDsgoRUCyj9X2wZ6PBN6WTz9xyu0")
-            .await;
+        let signer = ArweaveSigner::new(arweave);
+        let c = Everpay::new(EverpayClient::default(), &signer)
+            .await
+            .unwrap();
 
-        println!("{:#?}", res);
+        println!("{:#?}", c.symbol_to_tag());
+        println!("{:#?}", c.tokens());
     }
 
     #[tokio::test]
@@ -234,11 +246,9 @@ mod test {
 
         let signer = EthSigner::new(c).await;
 
-        let c = EverpayClient::new(
-            reqwest::Client::new(),
-            Url::from_str(DEFAULT_URL).unwrap(),
-            &signer,
-        );
+        let c = Everpay::new(EverpayClient::default(), &signer)
+            .await
+            .unwrap();
 
         let res = c
             .sign_and_send_tx(
@@ -272,11 +282,9 @@ mod test {
 
         let signer = ArweaveSigner::new(arweave);
 
-        let c = EverpayClient::new(
-            reqwest::Client::new(),
-            Url::from_str(DEFAULT_URL).unwrap(),
-            &signer,
-        );
+        let c = Everpay::new(EverpayClient::default(), &signer)
+            .await
+            .unwrap();
 
         let res = c
             .sign_and_send_tx(
