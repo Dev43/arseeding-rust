@@ -22,7 +22,7 @@ pub struct ASClient {
     everpay: Everpay,
 }
 
-const DEFAULT_ARSEEDING_URL: &str = "https://arseed.web3infra.dev";
+pub const DEFAULT_ARSEEDING_URL: &str = "https://arseed.web3infra.dev";
 
 impl ASClient {
     pub fn new(url: Url, client: Client, arweave: Arweave, everpay: Everpay) -> Self {
@@ -260,7 +260,7 @@ mod test {
 
     use super::*;
 
-    async fn init_default<'a>(signer: Arc<dyn Signer>, arweave: Arweave) -> ASClient {
+    async fn init_default<'a>(signer: Arc<dyn Signer + Send + Sync>, arweave: Arweave) -> ASClient {
         let everpay = Everpay::new(EverpayClient::default(), signer)
             .await
             .unwrap();
