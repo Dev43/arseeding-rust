@@ -6,7 +6,7 @@ use crate::{
         SubmitNativeRes,
     },
     everpay::Everpay,
-    everpay_types::{PayTxData, StatusRes},
+    everpay_types::PayTxData,
 };
 use arloader::{
     transaction::{FromUtf8Strs, Tag},
@@ -80,7 +80,7 @@ impl<'a> ASClient<'a> {
         tags: &HashMap<String, String>,
         data: Vec<u8>,
         api_key: &str,
-    ) -> Result<StatusRes, ASError> {
+    ) -> Result<String, ASError> {
         let order = self
             .bundle_and_submit(data, tags, currency, api_key)
             .await?;
@@ -96,13 +96,15 @@ impl<'a> ASClient<'a> {
         let data = serde_json::to_string(&PayTxData {
             app_name: String::from("arseeding"),
             action: String::from("payment"),
-            item_ids: vec![order_id],
+            item_ids: vec![order_id.clone()],
         })
         .unwrap();
 
         self.everpay
             .transfer(&currency, &bundler, fee_int, &data)
-            .await
+            .await?;
+
+        Ok(order_id)
     }
 
     pub async fn submit_item(
