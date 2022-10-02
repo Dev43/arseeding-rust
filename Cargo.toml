@@ -12,7 +12,7 @@ url = "2.2.2"
 serde = "1.0.130"
 serde_derive = "1.0.130"
 serde_json = { version = "1.0.68", features = ["preserve_order"] }
-arloader = "0.1.63"
+arloader = { git = "https://github.com/Dev43/arloader", branch = "feat/wasm" }
 chrono = "0.4.22"
 ethers = "0.13.0"
 walletconnect = { git = "https://github.com/Dev43/walletconnect-rs", branch = "feat/ethberlin", features = [
